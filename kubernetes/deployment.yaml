@@ -1,0 +1,153 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-lab
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model
+  namespace: ai-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model
+  template:
+    metadata:
+      labels:
+        app: model
+    spec:
+      containers:
+      - name: model
+        image: 022005598334.dkr.ecr.eu-north-1.amazonaws.com/ai-lab/model:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9000
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model
+  namespace: ai-lab
+spec:
+  selector:
+    app: model
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference
+  namespace: ai-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference
+  template:
+    metadata:
+      labels:
+        app: inference
+    spec:
+      containers:
+      - name: inference
+        image: 022005598334.dkr.ecr.eu-north-1.amazonaws.com/ai-lab/inference:mac
+        imagePullPolicy: Always
+        env:
+        - name: MODEL_URL
+          value: "http://model.default.svc.cluster.local:9000"
+        ports:
+        - containerPort: 8000
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-api
+  namespace: ai-lab
+spec:
+  type: LoadBalancer
+  selector:
+    app: infer  # This should match the deployment's app label
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+# Optional: Horizontal Pod Autoscaler for inference service
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: inference-hpa
+#   namespace: ai-lab
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: inference
+#   minReplicas: 2
+#   maxReplicas: 10
+#   metrics:
+#   - type: Resource
+#     resource:
+#       name: cpu
+#       target:
+#         type: Utilization
+#         averageUtilization: 70

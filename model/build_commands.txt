@@ -1,0 +1,11 @@
+# 1. Authenticate Docker to your ECR registry
+aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 022005598334.dkr.ecr.eu-north-1.amazonaws.com
+
+# 2. Build your Docker image
+docker buildx build --platform linux/amd64 -t model .
+
+# 3. Tag your image for ECR
+docker tag model:latest 022005598334.dkr.ecr.eu-north-1.amazonaws.com/ai-lab/model:latest
+
+# 4. Push the image to ECR
+docker push 022005598334.dkr.ecr.eu-north-1.amazonaws.com/ai-lab/model:latest

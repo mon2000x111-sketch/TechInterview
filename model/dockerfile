@@ -1,0 +1,47 @@
+# Multi-stage build for smaller final image
+FROM python:3.11-slim AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies in a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Final stage
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code
+COPY model.py .
+
+# Create non-root user for security
+RUN useradd -m -u 1000 modeluser && \
+    chown -R modeluser:modeluser /app
+
+# Switch to non-root user
+USER modeluser
+
+# Expose port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:9000/health', timeout=2).raise_for_status()" || exit 1
+
+# Run the application
+CMD ["uvicorn", "model:app", "--host", "0.0.0.0", "--port", "9000", "--workers", "2"]
